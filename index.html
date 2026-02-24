@@ -18,6 +18,7 @@ input{
 }
 
 .teamInput{width:120px;margin:3px;}
+.shortcutInput{width:40px;}
 
 .obs{
   background:black;
@@ -84,7 +85,8 @@ const POINT_TABLE=[
 
 let teams=[];
 let raceCount=12;
-let previousRanks={}; // ←順位記録
+let previousRanks={};
+let shortcutMap={}; // ←ショートカット保存
 
 /* レース数 */
 for(let i=8;i<=32;i++){
@@ -100,15 +102,18 @@ function init(){
 
   teams=[];
   previousRanks={};
+  shortcutMap={};
 
   const area=document.getElementById("teamNameArea");
   area.innerHTML="<h3>チーム設定</h3>";
 
   for(let i=0;i<teamCount;i++){
     teams.push({name:`Team${i+1}`,score:0});
+
     area.innerHTML+=`
       チーム${i+1}
       名前:<input class="teamInput" id="teamName${i}" value="Team${i+1}">
+      SC:<input class="shortcutInput" id="shortcut${i}" maxlength="1">
       <br>`;
   }
 
@@ -142,16 +147,27 @@ function buildTable(){
       input.dataset.rank=rank;
       input.dataset.race=r;
 
-      input.addEventListener("input",()=>{
-        moveNext(input);
-        recalcScores();
-      });
-
+      /* ===== ショートカット入力 ===== */
       input.addEventListener("keydown",(e)=>{
+
+        const key=e.key.toLowerCase();
+
+        if(shortcutMap[key]!==undefined){
+          e.preventDefault();
+          input.value=shortcutMap[key]+1;
+          moveNext(input);
+          recalcScores();
+          return;
+        }
+
         if(e.key==="Enter"){
           e.preventDefault();
           moveNext(input);
         }
+      });
+
+      input.addEventListener("input",()=>{
+        recalcScores();
       });
 
       td.appendChild(input);
@@ -216,9 +232,15 @@ function calcComebackPerRace(){
 function recalcScores(){
 
   teams.forEach(t=>t.score=0);
+  shortcutMap={};
 
   teams.forEach((t,i)=>{
     t.name=document.getElementById(`teamName${i}`).value;
+
+    const sc=document.getElementById(`shortcut${i}`).value
+      .toLowerCase();
+
+    if(sc) shortcutMap[sc]=i;
   });
 
   document.querySelectorAll("input[data-rank]").forEach(input=>{
@@ -250,7 +272,6 @@ function updateDisplays(remain){
   document.getElementById("comebackLine").textContent=
     `逆転可能ライン: ${maxSwing}pts以内`;
 
-  /* 優勝確定 */
   let championText="未確定";
   if(sorted.length>=2){
     const diff=sorted[0].score-sorted[1].score;
@@ -271,7 +292,6 @@ ${championText}
 
 `;
 
-  /* ===== 順位変動計算 ===== */
   let newRanks={};
 
   sorted.forEach((team,i)=>{
@@ -285,7 +305,6 @@ ${championText}
 
     const div=document.createElement("div");
 
-    /* 色 */
     let color="white";
     if(i===0) color="gold";
     else if(i===1) color="silver";
@@ -293,20 +312,12 @@ ${championText}
 
     if(team.name===myTeam) color="red";
 
-    if(i!==0){
-      if(diff<=maxSwing*0.6) color="lime";
-      else if(diff<=maxSwing) color="deepskyblue";
-      else color="gray";
-    }
-
     div.style.color=color;
 
-    /* ===== 矢印判定 ===== */
     let arrow="・";
 
     if(previousRanks[team.name]!==undefined){
       const prev=previousRanks[team.name];
-
       if(prev>i) arrow="↑";
       else if(prev<i) arrow="↓";
       else arrow="→";
@@ -323,7 +334,355 @@ ${championText}
     copyText+=div.textContent+"\n";
   });
 
-  previousRanks=newRanks; // 更新保存
+  previousRanks=newRanks;
+  copyArea.value=copyText;
+}
+
+/* コピー */
+function copyScores(){
+  copyArea.select();
+  document.execCommand("copy");
+}
+
+</script>
+</body>
+</html><!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>Mario Kart Team Tournament</title>
+
+<style>
+body{font-family:sans-serif;background:#111;color:white;}
+table{border-collapse:collapse;}
+td,th{border:1px solid #555;padding:4px;text-align:center;}
+
+input{
+  width:50px;
+  background:#222;
+  color:white;
+  border:1px solid #555;
+  text-align:center;
+}
+
+.teamInput{width:120px;margin:3px;}
+.shortcutInput{width:40px;}
+
+.obs{
+  background:black;
+  padding:10px;
+  margin-top:20px;
+  width:360px;
+  font-size:20px;
+}
+</style>
+</head>
+
+<body>
+
+<h1>MK Team Tournament Tool</h1>
+
+形式：
+<select id="formatSelect">
+<option value="12">12v12</option>
+<option value="8">8v8</option>
+<option value="6">6v6</option>
+<option value="4">4v4</option>
+<option value="3">3v3</option>
+<option value="2">2v2</option>
+</select>
+
+レース数：
+<select id="raceSelect"></select>
+
+自チーム名：
+<input id="myTeamInput">
+
+<button onclick="init()">生成</button>
+
+<h2 id="remainRace">残りレース: -</h2>
+<h2 id="comebackLine">逆転可能ライン: -</h2>
+<h2 id="championStatus">優勝判定: -</h2>
+
+<hr>
+
+<div id="teamNameArea"></div>
+<br>
+<div id="tableArea"></div>
+
+<h2>コピー用</h2>
+<textarea id="copyArea" rows="10" cols="40"></textarea>
+<br>
+<button onclick="copyScores()">コピー</button>
+
+<h2>OBS①</h2>
+<div id="obs1" class="obs"></div>
+
+<h2>OBS③</h2>
+<div id="obs3" class="obs"></div>
+
+<script>
+
+/* ===============================
+   配点
+================================ */
+const POINT_TABLE=[
+15,12,10,9,9,8,8,7,7,6,6,6,
+5,5,5,4,4,4,3,3,3,2,2,1
+];
+
+let teams=[];
+let raceCount=12;
+let previousRanks={};
+let shortcutMap={}; // ←ショートカット保存
+
+/* レース数 */
+for(let i=8;i<=32;i++){
+  raceSelect.append(new Option(i,i));
+}
+
+/* 初期化 */
+function init(){
+
+  const teamSize=Number(formatSelect.value);
+  raceCount=Number(raceSelect.value);
+  const teamCount=24/teamSize;
+
+  teams=[];
+  previousRanks={};
+  shortcutMap={};
+
+  const area=document.getElementById("teamNameArea");
+  area.innerHTML="<h3>チーム設定</h3>";
+
+  for(let i=0;i<teamCount;i++){
+    teams.push({name:`Team${i+1}`,score:0});
+
+    area.innerHTML+=`
+      チーム${i+1}
+      名前:<input class="teamInput" id="teamName${i}" value="Team${i+1}">
+      SC:<input class="shortcutInput" id="shortcut${i}" maxlength="1">
+      <br>`;
+  }
+
+  buildTable();
+  recalcScores();
+}
+
+/* 表生成 */
+function buildTable(){
+
+  const area=document.getElementById("tableArea");
+  area.innerHTML="";
+  const table=document.createElement("table");
+
+  let head="<tr><th>順位</th>";
+  for(let r=1;r<=raceCount;r++) head+=`<th>R${r}</th>`;
+  head+="</tr>";
+
+  table.innerHTML=head;
+
+  for(let rank=1;rank<=24;rank++){
+
+    const tr=document.createElement("tr");
+    tr.innerHTML=`<td>${rank}</td>`;
+
+    for(let r=0;r<raceCount;r++){
+
+      const td=document.createElement("td");
+      const input=document.createElement("input");
+
+      input.dataset.rank=rank;
+      input.dataset.race=r;
+
+      /* ===== ショートカット入力 ===== */
+      input.addEventListener("keydown",(e)=>{
+
+        const key=e.key.toLowerCase();
+
+        if(shortcutMap[key]!==undefined){
+          e.preventDefault();
+          input.value=shortcutMap[key]+1;
+          moveNext(input);
+          recalcScores();
+          return;
+        }
+
+        if(e.key==="Enter"){
+          e.preventDefault();
+          moveNext(input);
+        }
+      });
+
+      input.addEventListener("input",()=>{
+        recalcScores();
+      });
+
+      td.appendChild(input);
+      tr.appendChild(td);
+    }
+
+    table.appendChild(tr);
+  }
+
+  area.appendChild(table);
+}
+
+/* 次セル移動 */
+function moveNext(input){
+
+  const race=Number(input.dataset.race);
+  const rank=Number(input.dataset.rank);
+
+  let next=document.querySelector(
+    `input[data-race="${race}"][data-rank="${rank+1}"]`
+  );
+
+  if(!next){
+    next=document.querySelector(
+      `input[data-race="${race+1}"][data-rank="1"]`
+    );
+  }
+
+  if(next) next.focus();
+}
+
+/* 残りレース */
+function getRemainingRaces(){
+
+  let finished=0;
+
+  for(let r=0;r<raceCount;r++){
+    const col=[...document.querySelectorAll(`input[data-race="${r}"]`)];
+    if(col.every(i=>i.value!=="")) finished++;
+  }
+
+  return raceCount-finished;
+}
+
+/* 最大逆転差 */
+function calcComebackPerRace(){
+
+  const teamSize=Number(formatSelect.value);
+
+  let max=0;
+  let min=0;
+
+  for(let i=0;i<teamSize;i++){
+    max+=POINT_TABLE[i];
+    min+=POINT_TABLE[POINT_TABLE.length-1-i];
+  }
+
+  return max-min;
+}
+
+/* 点数計算 */
+function recalcScores(){
+
+  teams.forEach(t=>t.score=0);
+  shortcutMap={};
+
+  teams.forEach((t,i)=>{
+    t.name=document.getElementById(`teamName${i}`).value;
+
+    const sc=document.getElementById(`shortcut${i}`).value
+      .toLowerCase();
+
+    if(sc) shortcutMap[sc]=i;
+  });
+
+  document.querySelectorAll("input[data-rank]").forEach(input=>{
+
+    const teamIndex=Number(input.value)-1;
+    const rank=Number(input.dataset.rank);
+
+    if(teamIndex>=0 && teamIndex<teams.length){
+      teams[teamIndex].score+=POINT_TABLE[rank-1];
+    }
+  });
+
+  const remain=getRemainingRaces();
+  document.getElementById("remainRace").textContent=
+    `残りレース: ${remain}`;
+
+  updateDisplays(remain);
+}
+
+/* 表示更新 */
+function updateDisplays(remain){
+
+  const myTeam=document.getElementById("myTeamInput").value;
+  const sorted=[...teams].sort((a,b)=>b.score-a.score);
+
+  const comebackPerRace=calcComebackPerRace();
+  const maxSwing=comebackPerRace*remain;
+
+  document.getElementById("comebackLine").textContent=
+    `逆転可能ライン: ${maxSwing}pts以内`;
+
+  let championText="未確定";
+  if(sorted.length>=2){
+    const diff=sorted[0].score-sorted[1].score;
+    if(diff>maxSwing){
+      championText=`🏆 ${sorted[0].name} 優勝確定`;
+    }
+  }
+
+  document.getElementById("championStatus").textContent=
+    `優勝判定: ${championText}`;
+
+  obs1.innerHTML="";
+  obs3.innerHTML="";
+
+  let copyText=
+`逆転可能ライン: ${maxSwing}pts以内
+${championText}
+
+`;
+
+  let newRanks={};
+
+  sorted.forEach((team,i)=>{
+    newRanks[team.name]=i;
+  });
+
+  sorted.forEach((team,i)=>{
+
+    const leaderScore=sorted[0].score;
+    const diff=leaderScore-team.score;
+
+    const div=document.createElement("div");
+
+    let color="white";
+    if(i===0) color="gold";
+    else if(i===1) color="silver";
+    else if(i===2) color="#cd7f32";
+
+    if(team.name===myTeam) color="red";
+
+    div.style.color=color;
+
+    let arrow="・";
+
+    if(previousRanks[team.name]!==undefined){
+      const prev=previousRanks[team.name];
+      if(prev>i) arrow="↑";
+      else if(prev<i) arrow="↓";
+      else arrow="→";
+    }
+
+    let diffText=i===0?"":` (-${diff})`;
+
+    div.textContent=
+      `${arrow} ${i+1}. ${team.name} ${team.score}pts${diffText}`;
+
+    obs1.appendChild(div);
+    obs3.appendChild(div.cloneNode(true));
+
+    copyText+=div.textContent+"\n";
+  });
+
+  previousRanks=newRanks;
   copyArea.value=copyText;
 }
 
